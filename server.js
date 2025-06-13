@@ -1,11 +1,22 @@
 import { AzureChatOpenAI, AzureOpenAIEmbeddings } from "@langchain/openai";
-import { SystemMessage, HumanMessage, AIMessage, ToolMessage } from "@langchain/core/messages";
-import { tool } from "@langchain/core/tools";
+import {
+  SystemMessage,
+  HumanMessage,
+  AIMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
+import { FaissStore } from "@langchain/community/vectorstores/faiss";
+import { Document } from "@langchain/core/documents";
 import express from "express";
 import cors from "cors";
+import {existsSync} from "fs";
+import fs from "fs";
+import path from "path";
+
 
 const quotes = [];
 let currentGame = {};
+let history = [];
 
 async function getData(id) {
   const response = await fetch(
@@ -26,6 +37,18 @@ async function getData(id) {
   console.log(quotes);
 }
 
+let vectorStore;
+async function buildVectorStore(embeddings) {
+  const docs = quotes.map((item) => new Document({
+    pageContent: item.qoute,
+    metadata: { speaker: item.name }
+  }));
+
+  vectorStore = await FaissStore.fromDocuments(docs, embeddings);
+  await vectorStore.save("./quotes_file");
+}
+
+
 async function getCharacter(id, data) {
   const response = await fetch(`https://the-one-api.dev/v2/character/${id}/`, {
     method: "GET",
@@ -39,12 +62,10 @@ async function getCharacter(id, data) {
   quotes.push({ qoute: data, name: lotrName.docs[0].name });
 }
 
-
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
 
 const model = new AzureChatOpenAI({
   temperature: 0.7,
@@ -58,57 +79,95 @@ function getRandomQoute() {
 async function startGame() {
   const randomQuote = getRandomQoute();
 
-  const response = await model.invoke([
-    ["system", "We're playing a qoute guessing game. You will present a qoute and ask the user to guess who said it. After three wrong tries, reveal the answer. Repeat the qoute"],
-    ["system", `The quote is: "${randomQuote.qoute}". The correct answer is: ${randomQuote.name}.`],
+  history = [
+    [
+      "system",
+      "We're playing a quote guessing game. You will present a quote and ask the user to guess who said it. After three wrong tries, reveal the answer. Repeat the quote.",
+    ],
+    [
+      "system",
+      `The quote is: "${randomQuote.qoute}". The correct answer is: ${randomQuote.name}.`,
+    ],
     ["ai", `Who said: "${randomQuote.qoute}"? You have three tries!`],
-  ]);
+  ];
+
+  const response = await model.invoke(history);
 
   console.log(response.content);
   currentGame = {
     qoute: randomQuote.qoute,
     question: response.content,
-    answer: randomQuote.name, 
+    answer: randomQuote.name,
     triesLeft: 3,
   };
   return currentGame;
 }
 
-app.post("/ask", (req, res) => {
+app.post("/ask", async (req, res) => {
   const userGuess = req.body.prompt;
 
-  if (!currentGame) {
-    return res.json({ message: "Start a game first by calling /start!" });
+  if (!vectorStore || !vectorStore.index) {
+    return res.json({
+      message: "Vector store niet beschikbaar, probeer opnieuw te starten.",
+    });
   }
 
-  if (userGuess.toLowerCase() === currentGame.answer.toLowerCase()) {
+  if (!currentGame || !vectorStore) {
+    return res.json({ message: "Begin eerst een spel" });
+  }
+
+  history.push(["user", userGuess]);
+
+  const results = await vectorStore.similaritySearch(userGuess, 1);
+  const bestMatch = results[0];
+  const guessedName = bestMatch.metadata.speaker.toLowerCase();
+  const correctName = currentGame.answer.toLowerCase();
+
+  let reply = "";
+
+  if (guessedName === correctName) {
+    reply = `Correct! 🎉 Je bedoelde inderdaad ${guessedName}.`;
     currentGame = {};
-    return res.json({ message: "Correct! 🎉 You guessed it!" });
   } else {
     currentGame.triesLeft--;
 
     if (currentGame.triesLeft <= 0) {
-      const correctAnswer = currentGame.answer;
+      reply = `Helaas! Geen pogingen meer. Het juiste antwoord was: ${currentGame.answer}`;
       currentGame = {};
-      return res.json({ message: `Sorry! No more tries left. The correct answer was: ${correctAnswer}` });
     } else {
-      return res.json({ message: `Wrong! You have ${currentGame.triesLeft} tries left. Try again! ${currentGame.qoute}` });
+      reply = `Niet helemaal! Je gok leek op ${guessedName}, maar dat is niet juist. Je hebt nog ${currentGame.triesLeft} pogingen. Probeer opnieuw!\n\nQuote: "${currentGame.qoute}"`;
     }
   }
+
+  history.push(["ai", reply]);
+
+  return res.json({ message: reply });
 });
 
 app.get("/start", async (req, res) => {
   const game = await startGame();
-  // Je zou game data (answer + triesLeft) in een memory object kunnen opslaan per gebruiker
   res.json(game);
 });
 
-
-
 async function startServer() {
   await getData("5cd95395de30eff6ebccde5d");
-  app.listen(3000, () => console.log("server staat aan op port 3000"));
+  
+  const embeddings = new AzureOpenAIEmbeddings({
+    azureOpenAIApiEmbeddingsDeploymentName: process.env.AZURE_EMBEDDING_DEPLOYMENT_NAME,
+    azureOpenAIApiKey: process.env.AZURE_OPENAI_API_KEY,
+    azureOpenAIApiInstanceName: process.env.AZURE_OPENAI_INSTANCE_NAME,
+    azureOpenAIApiVersion: process.env.AZURE_OPENAI_API_VERSION,
+  });
 
+  if (existsSync("./qoutes_file")) {
+    console.log("Laad bestaande vector store...");
+    vectorStore = await FaissStore.load("./qoutes_file", embeddings);
+  } else {
+    console.log("Genereer nieuwe vector store...");
+    await buildVectorStore(embeddings);
+  }
+
+  app.listen(3000, () => console.log("server staat aan op port 3000"));
 }
 
 startServer();
