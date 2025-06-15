@@ -12,7 +12,7 @@ const quotes = [];
 let currentGame = {};
 let history = [];
 
-const QUOTES_PATH = path.resolve("./quotes_file/quotes.json");
+const QUOTES_PATH = path.resolve("./quotes_file/docstore.json");
 const FAISS_PATH = "./quotes_file";
 
 function saveQuotesToFile(quotes, filePath) {
@@ -179,12 +179,13 @@ async function startServer() {
     azureOpenAIApiVersion: process.env.AZURE_OPENAI_API_VERSION,
   });
 
-  if (existsSync("./qoutes_file")) {
-    console.log("Laad bestaande vector store...");
-    vectorStore = await FaissStore.load("./qoutes_file", embeddings);
+  if (fs.existsSync(FAISS_PATH)) {
+    console.log("Laad bestaande VectorStore...");
+    vectorStore = await FaissStore.load(FAISS_PATH, embeddings);
   } else {
     console.log("Genereer nieuwe vector store...");
     await buildVectorStore(embeddings);
+    console.log("Nieuwe VectorStore gemaakt")
   }
 
   app.listen(3000, () => console.log("server staat aan op port 3000"));
