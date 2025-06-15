@@ -12,7 +12,7 @@ const quotes = [];
 let currentGame = {};
 let history = [];
 
-const QUOTES_PATH = path.resolve("./quotes_file/docstore.json");
+const QUOTES_PATH = path.resolve("./quotes_file/quotes.json");
 const FAISS_PATH = "./quotes_file";
 
 function saveQuotesToFile(quotes, filePath) {
@@ -146,16 +146,16 @@ app.post("/ask", async (req, res) => {
   let reply = "";
 
   if (guessedName === correctName) {
-    reply = `Correct! 🎉 Je bedoelde inderdaad ${guessedName}.`;
+    reply = `Correct! 🎉 It was ${guessedName}.`;
     currentGame = {};
   } else {
     currentGame.triesLeft--;
 
     if (currentGame.triesLeft <= 0) {
-      reply = `Helaas! Geen pogingen meer. Het juiste antwoord was: ${currentGame.answer}`;
+      reply = `So close! You're out of tries. The right answer was: ${currentGame.answer}`;
       currentGame = {};
     } else {
-      reply = `Niet helemaal! Je gok leek op ${guessedName}, maar dat is niet juist. Je hebt nog ${currentGame.triesLeft} pogingen. Probeer opnieuw!\n\nQuote: "${currentGame.qoute}"`;
+      reply = `Almost! Your guess was ${guessedName}, but that's not right. You've got ${currentGame.triesLeft} tries left. Try again!\n\nQuote: "${currentGame.qoute}"`;
     }
   }
 
