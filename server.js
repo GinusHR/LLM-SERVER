@@ -1,10 +1,4 @@
 import { AzureChatOpenAI, AzureOpenAIEmbeddings } from "@langchain/openai";
-import {
-  SystemMessage,
-  HumanMessage,
-  AIMessage,
-  ToolMessage,
-} from "@langchain/core/messages";
 import { FaissStore } from "@langchain/community/vectorstores/faiss";
 import { Document } from "@langchain/core/documents";
 import express from "express";
@@ -18,7 +12,29 @@ const quotes = [];
 let currentGame = {};
 let history = [];
 
+const QUOTES_PATH = path.resolve("./quotes_file/quotes.json");
+const FAISS_PATH = "./quotes_file";
+
+function saveQuotesToFile(quotes, filePath) {
+  fs.writeFileSync(filePath, JSON.stringify(quotes, null, 2), "utf-8");
+}
+
+function loadQuotesFromFile(filePath) {
+  if (fs.existsSync(filePath)) {
+    const data = fs.readFileSync(filePath, "utf-8");
+    return JSON.parse(data);
+  }
+  return null;
+}
+
 async function getData(id) {
+  let localQuotes = loadQuotesFromFile(QUOTES_PATH);
+  if (localQuotes) {
+    console.log("Quotes geladen uit lokaal bestand.");
+    quotes.push(...localQuotes);
+    return;
+  }
+
   const response = await fetch(
     `https://the-one-api.dev/v2/movie/${id}/quote?limit=50`,
     {
@@ -30,12 +46,16 @@ async function getData(id) {
   );
   const lotrData = await response.json();
 
-  console.log(lotrData);
   for (let item of lotrData.docs) {
     await getCharacter(item.character, item.dialog);
   }
-  console.log(quotes);
+
+ 
+  saveQuotesToFile(quotes, QUOTES_PATH);
+
+  console.log("Quotes opgehaald en lokaal opgeslagen.");
 }
+
 
 let vectorStore;
 async function buildVectorStore(embeddings) {
@@ -169,5 +189,7 @@ async function startServer() {
 
   app.listen(3000, () => console.log("server staat aan op port 3000"));
 }
+
+
 
 startServer();
