@@ -155,7 +155,7 @@ app.post("/ask", async (req, res) => {
       reply = `So close! You're out of tries. The right answer was: ${currentGame.answer}`;
       currentGame = {};
     } else {
-      reply = `Almost! Your guess was ${guessedName}, but that's not right. You've got ${currentGame.triesLeft} tries left. Try again!\n\nQuote: "${currentGame.qoute}"`;
+      reply = `Almost! Your guess was ${userGuess}, but that's not right. You've got ${currentGame.triesLeft} tries left. Try again!\n\nQuote: "${currentGame.qoute}"`;
     }
   }
 

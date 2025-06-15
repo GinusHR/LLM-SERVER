@@ -7,3 +7,6 @@ To use this you need execute several install commands. :
 - npm install @langchain/textsplitters
 - npm install faiss-node
 - npm install @langchain/community
+
+To begin server:
+- npm run start
